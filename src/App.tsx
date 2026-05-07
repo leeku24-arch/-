@@ -23,7 +23,7 @@ import {
 // 🚨 중요: 여기에 구글 Apps Script에서 발급받은 '웹 앱 URL'을 붙여넣으세요!
 // =========================================================================
 const GOOGLE_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbzN-UgL2XyuP4w_HBS2K-DpDsO__c7zHWY9QlBvdxLwumMMNFwy2Bk8uSR4LEm8ZNAi/exec';
+  'https://script.google.com/macros/s/AKfycbwuRh4nCrUPOeQybUEpdiuJyXqkY9kyB3VlMJExo7hSlk2eSKV73dM3E3V2qZAw_FeH/exec';
 
 // 시간대 오류 방지용 유틸 함수
 const getLocalMonthStr = () => {
@@ -114,6 +114,7 @@ const getLocalUserId = () => {
 export default function App() {
   const [logs, setLogs] = useState([]);
   const [view, setView] = useState('list');
+  const [workType, setWorkType] = useState('post');
   const [userName, setUserName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState({
@@ -299,6 +300,7 @@ export default function App() {
       id: 'log_' + Date.now().toString(36), // 고유 ID
       userId: currentUserId,
       userName,
+      type: workType,
       date: formData.date,
       startTime: formData.startTime,
       endTime: formData.endTime,
@@ -557,7 +559,7 @@ export default function App() {
     let tableHtml = `
       <table border="1" style="border-collapse: collapse; font-family: 'Malgun Gothic', sans-serif; text-align: center;">
         <thead>
-          <tr><th colspan="8" style="font-size: 20px; font-weight: bold; padding: 15px;">${displayYear}년 ${displayMonthNum}월 시간외근무 사후확인대장(안)</th></tr>
+        <tr><th colspan="8" style="font-size: 20px; font-weight: bold; padding: 15px;">${displayYear}년 ${displayMonthNum}월 시간외근무 ${workType === 'pre' ? '사전신청대장' : '사후확인대장'}(안)</th></tr>
           <tr><th colspan="8" style="text-align: right; padding-bottom: 10px;">(시설명: 절영종합사회복지관)</th></tr>
           <tr style="background-color: #E0E7FF; color: #1E3A8A; font-weight: bold;">
             <th style="padding: 10px; border: 1px solid #1E3A8A; width: 60px;">연번</th>
@@ -611,7 +613,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${displayYear}년_${displayMonthNum}월_시간외근무대장.xls`;
+    link.download = `${displayYear}년_${displayMonthNum}월_시간외근무_${workType === 'pre' ? '사전신청대장' : '사후확인대장'}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -619,16 +621,23 @@ export default function App() {
   };
 
   const displayedLogs = useMemo(() => {
-    let filtered = logs.filter((log) =>
-      formatDate(log.date).startsWith(selectedMonth)
-    );
-
-    if (searchQuery.trim() !== '')
+    let filtered = logs.filter((log) => {
+      const logType = log.type || 'post';
+  
+      return (
+        formatDate(log.date).startsWith(selectedMonth) &&
+        logType === workType
+      );
+    });
+  
+    if (searchQuery.trim() !== '') {
       filtered = filtered.filter((log) =>
         log.userName.includes(searchQuery.trim())
       );
+    }
+  
     return filtered;
-  }, [logs, searchQuery, selectedMonth]);
+  }, [logs, searchQuery, selectedMonth, workType]);
 
   const displayedTotalHours = useMemo(() => {
     return displayedLogs
@@ -732,7 +741,7 @@ export default function App() {
                 절영종합사회복지관
               </h1>
               <p className="text-sm text-gray-500">
-                시간외근무 사후확인 시스템
+                시간외근무 관리 시스템
               </p>
             </div>
           </div>
@@ -786,6 +795,33 @@ export default function App() {
             <span>새로고침</span>
           </button>
         </div>
+
+        <div className="mb-6 flex justify-center">
+          <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200 w-full md:w-fit">
+            <button
+              onClick={() => setWorkType('pre')}
+              className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                workType === 'pre'
+                  ? 'bg-[#1E3A8A] text-white'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              사전 신청
+            </button>
+
+            <button
+              onClick={() => setWorkType('post')}
+              className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                workType === 'post'
+                  ? 'bg-[#1E3A8A] text-white'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              사후 확인
+            </button>
+          </div>
+        </div>
+
 
         {view === 'list' && (
           <div className="space-y-6">
@@ -855,9 +891,6 @@ export default function App() {
               </div>
 
               <div className="flex items-center justify-between w-full md:w-auto md:space-x-3">
-                <p className="text-xs text-gray-500 hidden md:block">
-                  ※ 시설별 여건에 따라 양식 변경사용 가능
-                </p>
                 <button
                   onClick={exportToExcel}
                   className="flex items-center space-x-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
@@ -1183,10 +1216,12 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-sm border border-[#A5B4FC] overflow-hidden max-w-2xl mx-auto">
             <div className="px-6 py-5 border-b border-[#E0E7FF] bg-[#F8FAFC]">
               <h2 className="text-lg font-bold text-[#1E3A8A]">
-                시간외근무 기록 등록
+              시간외근무 {workType === 'pre' ? '사전 신청' : '사후 확인'} 등록
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                대장 양식에 맞춰 내용을 작성해 주세요.
+              {workType === 'pre'
+               ? '시간외근무 예정 내용을 작성해 주세요.'
+               : '실제 시간외근무 내용을 작성해 주세요.'}
               </p>
             </div>
 
@@ -1368,7 +1403,11 @@ export default function App() {
                   className="w-full py-3.5 bg-[#1E3A8A] hover:bg-blue-900 text-white font-bold rounded-xl disabled:bg-gray-300 flex items-center justify-center space-x-2"
                 >
                   <CheckCircle size={20} />
-                  <span>확인대장에 기록 등록하기</span>
+                  <span>
+                  {workType === 'pre'
+                  ? '사전 신청 등록하기'
+                  : '사후 확인 등록하기'}
+                  </span>
                 </button>
               </div>
             </form>
