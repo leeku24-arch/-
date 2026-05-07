@@ -114,7 +114,7 @@ const getLocalUserId = () => {
 export default function App() {
   const [logs, setLogs] = useState([]);
   const [view, setView] = useState('list');
-  const [workType, setWorkType] = useState('post');
+  const [workType, setWorkType] = useState('pre');
   const [userName, setUserName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState({
