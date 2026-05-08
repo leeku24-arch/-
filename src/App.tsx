@@ -23,7 +23,7 @@ import {
 // 🚨 중요: 여기에 구글 Apps Script에서 발급받은 '웹 앱 URL'을 붙여넣으세요!
 // =========================================================================
 const GOOGLE_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbwuRh4nCrUPOeQybUEpdiuJyXqkY9kyB3VlMJExo7hSlk2eSKV73dM3E3V2qZAw_FeH/exec';
+  'https://script.google.com/macros/s/AKfycbwgPmghQoHZCc1DRpoDlq6XMw2_O8AT5pHpq2TPH3qEWilCWDaNY3hv1BzEvvGSq0M/exec';
 
 // 시간대 오류 방지용 유틸 함수
 const getLocalMonthStr = () => {
@@ -296,30 +296,71 @@ export default function App() {
     }
 
     setIsLoading(true);
-    const newLog = {
-      id: 'log_' + Date.now().toString(36), // 고유 ID
-      userId: currentUserId,
-      userName,
-      type: workType,
-      date: formData.date,
-      startTime: formData.startTime,
-      endTime: formData.endTime,
-      duration: parseFloat(formData.duration),
-      reason: formData.reason,
-      status: '대기',
-      createdAt: new Date().toISOString(),
-    };
+
+const linkedId =
+  'pair_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+const baseLog = {
+  userId: currentUserId,
+  userName,
+  date: formData.date,
+  startTime: formData.startTime,
+  endTime: formData.endTime,
+  duration: parseFloat(formData.duration),
+  reason: formData.reason,
+  status: '대기',
+  createdAt: new Date().toISOString(),
+};
+
+let logsToAdd = [];
+
+if (workType === 'pre') {
+  logsToAdd = [
+    {
+      ...baseLog,
+      id: 'log_pre_' + Date.now().toString(36),
+      type: 'pre',
+      linkedId,
+      isSyncedFromPre: 'TRUE',
+    },
+    {
+      ...baseLog,
+      id: 'log_post_' + Date.now().toString(36),
+      type: 'post',
+      linkedId,
+      isSyncedFromPre: 'TRUE',
+    },
+  ];
+} else {
+  logsToAdd = [
+    {
+      ...baseLog,
+      id: 'log_post_' + Date.now().toString(36),
+      type: 'post',
+      linkedId: '',
+      isSyncedFromPre: '',
+    },
+  ];
+}
 
     try {
       // 보안(CORS) 에러 방지를 위해 headers에 text/plain 명시 추가
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify({ action: 'addLog', data: newLog }),
-      });
-      showToast('시간외근무가 등록되었습니다.');
+      await Promise.all(
+        logsToAdd.map((log) =>
+          fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: JSON.stringify({ action: 'addLog', data: log }),
+          })
+        )
+      );
+      showToast(
+        workType === 'pre'
+          ? '사전 신청과 사후 확인 기록이 함께 등록되었습니다.'
+          : '사후 확인 기록이 등록되었습니다.'
+      );
       setView('list');
       setFormData((prev) => ({
         ...prev,
@@ -361,23 +402,63 @@ export default function App() {
     const monthTab = formatDate(logDate).substring(0, 7);
 
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify({ action: 'deleteLog', id, month: monthTab }),
-      });
-      showToast('기록이 삭제되었습니다.');
+      const targetLog = logs.find((l) => l.id === id);
+    
+      const deleteTargets = [targetLog].filter(Boolean);
+    
+      if (targetLog?.type === 'pre' && targetLog.linkedId) {
+        const linkedPostLog = logs.find(
+          (l) => l.type === 'post' && l.linkedId === targetLog.linkedId
+        );
+    
+        if (linkedPostLog) {
+          deleteTargets.push(linkedPostLog);
+        }
+      }
+    
+      await Promise.all(
+        deleteTargets.map((log) =>
+          fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: JSON.stringify({
+              action: 'deleteLog',
+              id: log.id,
+              month: formatDate(log.date).substring(0, 7),
+            }),
+          })
+        )
+      );
+    
+      showToast(
+        targetLog?.type === 'pre'
+          ? '사전 신청 및 연결된 사후 확인 기록이 삭제되었습니다.'
+          : '기록이 삭제되었습니다.'
+      );
+    
       fetchLogs();
     } catch (error) {
       showToast('삭제 중 오류가 발생했습니다.', 'error');
       setIsLoading(false);
     }
   };
+  const canEditLog = (log) => {
+    return (
+      isManager ||
+      (log.type === 'post' &&
+        log.userId === currentUserId &&
+        log.status === '대기')
+    );
+  };
+  
   const handleEditStart = (log) => {
-    if (!isManager) return;
-
+    if (!canEditLog(log)) {
+      showToast('수정 권한이 없습니다.', 'error');
+      return;
+    }
+  
     setEditingLogId(log.id);
     setEditData({
       startTime: formatTime(log.startTime),
@@ -412,7 +493,10 @@ export default function App() {
   };
 
   const handleEditSave = async (log) => {
-    if (!isManager) return;
+    if (!canEditLog(log)) {
+      showToast('수정 권한이 없습니다.', 'error');
+      return;
+    }
 
     if (!editData.reason.trim()) {
       showToast('근무내역을 입력해주세요.', 'error');
@@ -437,31 +521,59 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify({
-          action: 'updateLog',
-          id: log.id,
-          month: formatDate(log.date).substring(0, 7),
-          data: updatedLog,
-        }),
-      });
-
-      const text = await response.text();
-      console.log('updateLog 응답:', text);
-
-      const result = JSON.parse(text);
-
-      if (!result.success) {
-        showToast(result.message || '수정 저장에 실패했습니다.', 'error');
+      const updateTargets = [updatedLog];
+    
+      if (log.type === 'pre' && log.linkedId) {
+        const linkedPostLog = logs.find(
+          (l) => l.type === 'post' && l.linkedId === log.linkedId
+        );
+    
+        if (linkedPostLog) {
+          updateTargets.push({
+            ...linkedPostLog,
+            startTime: editData.startTime,
+            endTime: editData.endTime,
+            reason: editData.reason,
+            duration: newDuration,
+          });
+        }
+      }
+    
+      const results = await Promise.all(
+        updateTargets.map(async (target) => {
+          const response = await fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: JSON.stringify({
+              action: 'updateLog',
+              id: target.id,
+              month: formatDate(target.date).substring(0, 7),
+              data: target,
+            }),
+          });
+    
+          const text = await response.text();
+          console.log('updateLog 응답:', text);
+          return JSON.parse(text);
+        })
+      );
+    
+      const failed = results.find((result) => !result.success);
+    
+      if (failed) {
+        showToast(failed.message || '수정 저장에 실패했습니다.', 'error');
         setIsLoading(false);
         return;
       }
-
-      showToast('기록이 수정되었습니다.');
+    
+      showToast(
+        log.type === 'pre'
+          ? '사전 신청 및 연결된 사후 확인 기록이 수정되었습니다.'
+          : '기록이 수정되었습니다.'
+      );
+    
       setEditingLogId(null);
       fetchLogs();
     } catch (error) {
@@ -473,24 +585,55 @@ export default function App() {
   // 상태 변경 시 어떤 월(탭)에서 변경할지 날짜 정보(logDate) 추가
   const handleStatusChange = async (id, newStatus, logDate) => {
     if (!isManager) return;
+  
     setIsLoading(true);
-    const monthTab = formatDate(logDate).substring(0, 7);
-
+  
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify({
-          action: 'updateStatus',
-          id,
-          status: newStatus,
-          month: monthTab,
-        }),
-      });
-      if (newStatus === '대기') showToast('결재가 대기 상태로 변경되었습니다.');
-      else showToast(`성공적으로 ${newStatus} 처리되었습니다.`);
+      const targetLog = logs.find((l) => l.id === id);
+  
+      const updateTargets = [targetLog].filter(Boolean);
+  
+      if (targetLog?.type === 'pre' && targetLog.linkedId) {
+        const linkedPostLog = logs.find(
+          (l) => l.type === 'post' && l.linkedId === targetLog.linkedId
+        );
+  
+        if (linkedPostLog) {
+          updateTargets.push(linkedPostLog);
+        }
+      }
+  
+      await Promise.all(
+        updateTargets.map((log) =>
+          fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: JSON.stringify({
+              action: 'updateStatus',
+              id: log.id,
+              status: newStatus,
+              month: formatDate(log.date).substring(0, 7),
+            }),
+          })
+        )
+      );
+  
+      if (newStatus === '대기') {
+        showToast(
+          targetLog?.type === 'pre'
+            ? '사전 신청 및 연결된 사후 확인 기록이 대기 상태로 변경되었습니다.'
+            : '결재가 대기 상태로 변경되었습니다.'
+        );
+      } else {
+        showToast(
+          targetLog?.type === 'pre'
+            ? `사전 신청 및 연결된 사후 확인 기록이 ${newStatus} 처리되었습니다.`
+            : `성공적으로 ${newStatus} 처리되었습니다.`
+        );
+      }
+  
       fetchLogs();
     } catch (error) {
       showToast('상태 변경 중 오류가 발생했습니다.', 'error');
@@ -1163,18 +1306,47 @@ export default function App() {
                                     ? 'text-green-600'
                                     : log.status === '반려'
                                     ? 'text-red-600'
-                                    : 'text-transparent'
+                                    : 'text-gray-500'
                                 }`}
                               >
                                 {log.status === '대기' ? '대기' : log.status}
                               </span>
+                          
+                              {canEditLog(log) && (
+                                <>
+                                  {editingLogId === log.id ? (
+                                    <>
+                                      <button
+                                        onClick={() => handleEditSave(log)}
+                                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded"
+                                      >
+                                        저장
+                                      </button>
+                                      <button
+                                        onClick={handleEditCancel}
+                                        className="px-2 py-1 bg-gray-400 hover:bg-gray-500 text-white text-xs font-bold rounded"
+                                      >
+                                        취소
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleEditStart(log)}
+                                      className="px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded"
+                                    >
+                                      수정
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                          
                               {log.userId === currentUserId &&
                                 log.status === '대기' && (
                                   <button
                                     onClick={() =>
                                       handleDelete(log.id, log.userId, log.date)
                                     }
-                                    className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 absolute right-2"
+                                    className="text-gray-400 hover:text-red-500 p-1"
                                     title="기록 삭제"
                                   >
                                     <Trash2 size={16} />
