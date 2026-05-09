@@ -8,7 +8,6 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
-  Building,
   Search,
   Download,
   ShieldCheck,
@@ -18,6 +17,8 @@ import {
   RotateCcw,
   RefreshCw, // 새로고침 아이콘
 } from 'lucide-react';
+
+import jyLogo from './assets/picture/jy-logo.png';
 
 // =========================================================================
 // 🚨 중요: 여기에 구글 Apps Script에서 발급받은 '웹 앱 URL'을 붙여넣으세요!
@@ -945,9 +946,13 @@ const getEndHourOptionsForLog = (log) =>
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-[#1E3A8A] rounded-xl flex items-center justify-center text-white shadow-md">
-              <Building size={24} />
-            </div>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white shadow-sm overflow-hidden">
+          <img
+           src={jyLogo}
+           alt="절영종합사회복지관 로고"
+           className="w-11 h-11 object-contain"
+           />
+           </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 leading-tight">
                 절영종합사회복지관
@@ -1511,7 +1516,7 @@ const getEndHourOptionsForLog = (log) =>
                   <label className="block text-sm font-bold text-gray-700 mb-1.5">
                     성명
                   </label>
-                  <div className="relative">
+                  <div className="relative w-full">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <User size={18} className="text-gray-400" />
                     </div>
@@ -1529,18 +1534,18 @@ const getEndHourOptionsForLog = (log) =>
                   <label className="block text-sm font-bold text-gray-700 mb-1.5">
                     근무일
                   </label>
-                  <div className="relative">
+                  <div className="relative w-full">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Calendar size={18} className="text-gray-400" />
                     </div>
                     <input
-                     type="date"
-                     name="date"
-                     value={formData.date}
-                     onChange={handleFormChange}
-                     className="w-full h-[46px] pl-10 pr-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none text-base"
-                     required
-                     />
+                   type="date"
+                   name="date"
+                   value={formData.date}
+                   onChange={handleFormChange}
+                   className="w-full max-w-full h-[46px] pl-10 pr-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none text-base appearance-none box-border"
+                   required
+                   />
                   </div>
                 </div>
               </div>
