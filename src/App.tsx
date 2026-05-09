@@ -1701,3 +1701,4 @@ const getEndHourOptionsForLog = (log) =>
     </div>
   );
 }
+
