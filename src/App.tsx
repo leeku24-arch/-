@@ -23,7 +23,7 @@ import {
 // 🚨 중요: 여기에 구글 Apps Script에서 발급받은 '웹 앱 URL'을 붙여넣으세요!
 // =========================================================================
 const GOOGLE_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbwgPmghQoHZCc1DRpoDlq6XMw2_O8AT5pHpq2TPH3qEWilCWDaNY3hv1BzEvvGSq0M/exec';
+  'https://script.google.com/macros/s/AKfycbzdFfwCa47FgCVcxAdJbXqHcCFbqbqQ1zZlzVC8oGEPoegyLu12Y10xsFfgPG5ixzK_/exec';
 
 // 시간대 오류 방지용 유틸 함수
 const getLocalMonthStr = () => {
@@ -91,6 +91,11 @@ const endHourOptions = [
   '00',
 ];
 
+// 주말근무: 00 ~ 23 전체 선택 가능
+const weekendHourOptions = Array.from({ length: 24 }, (_, i) =>
+  String(i).padStart(2, '0')
+);
+
 const minuteOptions = ['00', '10', '20', '30', '40', '50'];
 
 const splitTime = (time) => {
@@ -115,6 +120,7 @@ export default function App() {
   const [logs, setLogs] = useState([]);
   const [view, setView] = useState('list');
   const [workType, setWorkType] = useState('pre');
+  const [workDayType, setWorkDayType] = useState('weekday');
   const [userName, setUserName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState({
@@ -217,23 +223,54 @@ export default function App() {
     );
   };
 
-  const calculateDuration = (start, end) => {
+  const calculateDuration = (start, end, dayType = 'weekday') => {
     if (!start || !end) return 0;
+  
     const [startH, startM] = start.split(':').map(Number);
     const [endH, endM] = end.split(':').map(Number);
+  
     let startMins = startH * 60 + startM;
     let endMins = endH * 60 + endM;
+  
     if (endMins < startMins) endMins += 24 * 60;
+  
+    // 주말근무는 전체 근무시간을 수당시간으로 계산
+    if (dayType === 'weekend') {
+      const totalMins = endMins - startMins;
+    
+      let breakMins = 0;
+      if (totalMins >= 8 * 60) {
+        breakMins = 60;
+      } else if (totalMins >= 4 * 60) {
+        breakMins = 30;
+      }
+    
+      const paidMins = Math.max(0, totalMins - breakMins);
+    
+      return parseFloat((paidMins / 60).toFixed(1));
+    }
+  
+    // 평일근무는 기존처럼 정규시간 09~18 제외
     const REGULAR_START = 9 * 60;
     const REGULAR_END = 18 * 60;
+  
     const overlapStart = Math.max(startMins, REGULAR_START);
     const overlapEnd = Math.min(endMins, REGULAR_END);
     const overlapMins = Math.max(0, overlapEnd - overlapStart);
+  
     let overtimeMins = endMins - startMins - overlapMins;
     let hours = overtimeMins / 60;
+  
     if (hours < 0) hours = 0;
+  
     return parseFloat(hours.toFixed(1));
   };
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      duration: calculateDuration(prev.startTime, prev.endTime, workDayType),
+    }));
+  }, [workDayType]);
 
   // --- Actions ---
   const handleNameChange = (e) => {
@@ -248,9 +285,10 @@ export default function App() {
       const newData = { ...prev, [name]: value };
       if (name === 'startTime' || name === 'endTime') {
         newData.duration = calculateDuration(
-          newData.startTime,
-          newData.endTime
-        );
+        newData.startTime,
+        newData.endTime,
+        workDayType
+       );
       }
       return newData;
     });
@@ -270,7 +308,11 @@ export default function App() {
         [field]: newTime,
       };
 
-      newData.duration = calculateDuration(newData.startTime, newData.endTime);
+      newData.duration = calculateDuration(
+        newData.startTime,
+        newData.endTime,
+        workDayType
+      );
 
       return newData;
     });
@@ -278,6 +320,13 @@ export default function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (workType === 'post') {
+      showToast('사후 확인은 사전 신청 등록 시 자동 생성됩니다. 사후 확인 탭에서 수정해 주세요.', 'error');
+      setView('list');
+      return;
+    }
+
     if (GOOGLE_SCRIPT_URL === '여기에_웹앱_URL을_붙여넣으세요') {
       showToast('구글 스크립트 URL이 설정되지 않았습니다.', 'error');
       return;
@@ -290,8 +339,18 @@ export default function App() {
       showToast('근무내역을 입력해주세요.', 'error');
       return;
     }
-    if (formData.duration > 4 || formData.duration <= 0) {
-      showToast('수당시간은 0초과, 4시간 이하여야 합니다.', 'error');
+    if (formData.duration <= 0) {
+      showToast('수당시간은 0보다 커야 합니다.', 'error');
+      return;
+    }
+    
+    if (workDayType === 'weekday' && formData.duration > 4) {
+      showToast('평일 수당시간은 4시간 이하여야 합니다.', 'error');
+      return;
+    }
+
+    if (workDayType === 'weekend' && formData.duration > 8) {
+      showToast('주말 수당시간은 8시간 이하여야 합니다.', 'error');
       return;
     }
 
@@ -300,17 +359,18 @@ export default function App() {
 const linkedId =
   'pair_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-const baseLog = {
-  userId: currentUserId,
-  userName,
-  date: formData.date,
-  startTime: formData.startTime,
-  endTime: formData.endTime,
-  duration: parseFloat(formData.duration),
-  reason: formData.reason,
-  status: '대기',
-  createdAt: new Date().toISOString(),
-};
+  const baseLog = {
+    userId: currentUserId,
+    userName,
+    date: formData.date,
+    startTime: formData.startTime,
+    endTime: formData.endTime,
+    duration: parseFloat(formData.duration),
+    reason: formData.reason,
+    status: '대기',
+    createdAt: new Date().toISOString(),
+    workDayType,
+  };
 
 let logsToAdd = [];
 
@@ -331,16 +391,11 @@ if (workType === 'pre') {
       isSyncedFromPre: 'TRUE',
     },
   ];
+
 } else {
-  logsToAdd = [
-    {
-      ...baseLog,
-      id: 'log_post_' + Date.now().toString(36),
-      type: 'post',
-      linkedId: '',
-      isSyncedFromPre: '',
-    },
-  ];
+  showToast('사후 확인은 사전 신청 등록 시 자동 생성됩니다.', 'error');
+  setIsLoading(false);
+  return;
 }
 
     try {
@@ -365,7 +420,7 @@ if (workType === 'pre') {
       setFormData((prev) => ({
         ...prev,
         reason: '',
-        duration: calculateDuration(prev.startTime, prev.endTime),
+        duration: calculateDuration(prev.startTime, prev.endTime, workDayType),
       }));
       fetchLogs(); // 새로고침
     } catch (error) {
@@ -378,44 +433,55 @@ if (workType === 'pre') {
     }
   };
 
-  // 삭제 시 어떤 월(탭)에서 지울지 날짜 정보(logDate) 추가
   const handleDelete = async (id, logUserId, logDate) => {
-    // 결재 완료된 건 관리자만 삭제 가능
-    if (logDate && !isManager) {
-      const targetLog = logs.find((l) => l.id === id);
-
-      if (targetLog && targetLog.status !== '대기') {
+    const targetLog = logs.find((l) => l.id === id);
+  
+    if (!targetLog) {
+      showToast('삭제할 기록을 찾지 못했습니다.', 'error');
+      return;
+    }
+  
+    // 삭제 대상 정하기
+    // linkedId가 있으면 사전/사후 연결 기록을 모두 삭제
+    // linkedId가 없으면 해당 기록만 삭제
+    const deleteTargets = targetLog.linkedId
+      ? logs.filter((l) => l.linkedId === targetLog.linkedId)
+      : [targetLog];
+  
+    // 결재 완료된 기록이 포함되어 있으면 일반 직원은 삭제 불가
+    if (!isManager) {
+      const hasApprovedOrRejected = deleteTargets.some(
+        (log) => log.status !== '대기'
+      );
+  
+      if (hasApprovedOrRejected) {
         showToast('결재 완료된 기록은 관리자만 삭제할 수 있습니다.', 'error');
         return;
       }
     }
-
-    // 기존 권한 체크
-    if (currentUserId !== logUserId && !isManager) {
-      showToast('본인의 기록만 삭제할 수 있습니다.', 'error');
-      return;
-    }
-
-    if (!window.confirm('정말 이 기록을 삭제하시겠습니까?')) return;
-
-    setIsLoading(true);
-    const monthTab = formatDate(logDate).substring(0, 7);
-
-    try {
-      const targetLog = logs.find((l) => l.id === id);
-    
-      const deleteTargets = [targetLog].filter(Boolean);
-    
-      if (targetLog?.type === 'pre' && targetLog.linkedId) {
-        const linkedPostLog = logs.find(
-          (l) => l.type === 'post' && l.linkedId === targetLog.linkedId
-        );
-    
-        if (linkedPostLog) {
-          deleteTargets.push(linkedPostLog);
-        }
+  
+    // 일반 직원은 본인 기록만 삭제 가능
+    if (!isManager) {
+      const hasOtherUserLog = deleteTargets.some(
+        (log) => log.userId !== currentUserId
+      );
+  
+      if (hasOtherUserLog) {
+        showToast('본인의 기록만 삭제할 수 있습니다.', 'error');
+        return;
       }
-    
+    }
+  
+    const confirmMessage =
+      deleteTargets.length > 1
+        ? '연결된 사전 신청과 사후 확인 기록이 함께 삭제됩니다. 정말 삭제하시겠습니까?'
+        : '정말 이 기록을 삭제하시겠습니까?';
+  
+    if (!window.confirm(confirmMessage)) return;
+  
+    setIsLoading(true);
+  
+    try {
       await Promise.all(
         deleteTargets.map((log) =>
           fetch(GOOGLE_SCRIPT_URL, {
@@ -431,19 +497,20 @@ if (workType === 'pre') {
           })
         )
       );
-    
+  
       showToast(
-        targetLog?.type === 'pre'
-          ? '사전 신청 및 연결된 사후 확인 기록이 삭제되었습니다.'
+        deleteTargets.length > 1
+          ? '연결된 사전 신청 및 사후 확인 기록이 삭제되었습니다.'
           : '기록이 삭제되었습니다.'
       );
-    
+  
       fetchLogs();
     } catch (error) {
       showToast('삭제 중 오류가 발생했습니다.', 'error');
       setIsLoading(false);
     }
   };
+
   const canEditLog = (log) => {
     return (
       isManager ||
@@ -503,10 +570,24 @@ if (workType === 'pre') {
       return;
     }
 
-    const newDuration = calculateDuration(editData.startTime, editData.endTime);
+    const newDuration = calculateDuration(
+      editData.startTime,
+      editData.endTime,
+      log.workDayType || 'weekday'
+    );
 
-    if (newDuration > 4 || newDuration <= 0) {
-      showToast('수당시간은 0초과, 4시간 이하여야 합니다.', 'error');
+    if (newDuration <= 0) {
+      showToast('수당시간은 0보다 커야 합니다.', 'error');
+      return;
+    }
+    
+    if ((log.workDayType || 'weekday') === 'weekday' && newDuration > 4) {
+      showToast('평일 수당시간은 4시간 이하여야 합니다.', 'error');
+      return;
+    }
+
+    if ((log.workDayType || 'weekday') === 'weekend' && newDuration > 8) {
+      showToast('주말 수당시간은 8시간 이하여야 합니다.', 'error');
       return;
     }
 
@@ -588,50 +669,26 @@ if (workType === 'pre') {
   
     setIsLoading(true);
   
+    const monthTab = formatDate(logDate).substring(0, 7);
+  
     try {
-      const targetLog = logs.find((l) => l.id === id);
-  
-      const updateTargets = [targetLog].filter(Boolean);
-  
-      if (targetLog?.type === 'pre' && targetLog.linkedId) {
-        const linkedPostLog = logs.find(
-          (l) => l.type === 'post' && l.linkedId === targetLog.linkedId
-        );
-  
-        if (linkedPostLog) {
-          updateTargets.push(linkedPostLog);
-        }
-      }
-  
-      await Promise.all(
-        updateTargets.map((log) =>
-          fetch(GOOGLE_SCRIPT_URL, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/plain;charset=utf-8',
-            },
-            body: JSON.stringify({
-              action: 'updateStatus',
-              id: log.id,
-              status: newStatus,
-              month: formatDate(log.date).substring(0, 7),
-            }),
-          })
-        )
-      );
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({
+          action: 'updateStatus',
+          id,
+          status: newStatus,
+          month: monthTab,
+        }),
+      });
   
       if (newStatus === '대기') {
-        showToast(
-          targetLog?.type === 'pre'
-            ? '사전 신청 및 연결된 사후 확인 기록이 대기 상태로 변경되었습니다.'
-            : '결재가 대기 상태로 변경되었습니다.'
-        );
+        showToast('결재가 대기 상태로 변경되었습니다.');
       } else {
-        showToast(
-          targetLog?.type === 'pre'
-            ? `사전 신청 및 연결된 사후 확인 기록이 ${newStatus} 처리되었습니다.`
-            : `성공적으로 ${newStatus} 처리되었습니다.`
-        );
+        showToast(`성공적으로 ${newStatus} 처리되었습니다.`);
       }
   
       fetchLogs();
@@ -690,6 +747,18 @@ if (workType === 'pre') {
       showToast('비밀번호가 일치하지 않습니다.', 'error');
     }
   };
+
+  const currentStartHourOptions =
+  workDayType === 'weekend' ? weekendHourOptions : startHourOptions;
+
+const currentEndHourOptions =
+  workDayType === 'weekend' ? weekendHourOptions : endHourOptions;
+
+const getStartHourOptionsForLog = (log) =>
+  log.workDayType === 'weekend' ? weekendHourOptions : startHourOptions;
+
+const getEndHourOptionsForLog = (log) =>
+  log.workDayType === 'weekend' ? weekendHourOptions : endHourOptions;
 
   const exportToExcel = () => {
     if (displayedLogs.length === 0) {
@@ -916,17 +985,19 @@ if (workType === 'pre') {
               <ListIcon size={18} />
               <span>대장 보기</span>
             </button>
-            <button
-              onClick={() => setView('form')}
-              className={`flex-1 md:flex-none flex items-center justify-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-colors ${
-                view === 'form'
-                  ? 'bg-[#1E3A8A] text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <Plus size={18} />
-              <span>근무 등록</span>
-            </button>
+            {workType === 'pre' && (
+           <button
+           onClick={() => setView('form')}
+           className={`flex-1 md:flex-none flex items-center justify-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+           view === 'form'
+           ? 'bg-[#1E3A8A] text-white'
+           : 'text-gray-600 hover:bg-gray-50'
+           }`} 
+           >
+    <Plus size={18} />
+    <span>근무 등록</span>
+  </button>
+)}
           </div>
 
           {/* 수동 새로고침 버튼 */}
@@ -941,8 +1012,11 @@ if (workType === 'pre') {
 
         <div className="mb-6 flex justify-center">
           <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200 w-full md:w-fit">
-            <button
-              onClick={() => setWorkType('pre')}
+          <button
+           onClick={() => {
+            setWorkType('pre');
+            setView('list');
+          }}
               className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-colors ${
                 workType === 'pre'
                   ? 'bg-[#1E3A8A] text-white'
@@ -953,7 +1027,10 @@ if (workType === 'pre') {
             </button>
 
             <button
-              onClick={() => setWorkType('post')}
+             onClick={() => {
+             setWorkType('post');
+             setView('list');
+             }}
               className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-colors ${
                 workType === 'post'
                   ? 'bg-[#1E3A8A] text-white'
@@ -1133,7 +1210,7 @@ if (workType === 'pre') {
                                 }
                                 className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
                               >
-                                {startHourOptions.map((h) => (
+                                {getStartHourOptionsForLog(log).map((h) => (
                                   <option key={h} value={h}>
                                     {h}시
                                   </option>
@@ -1176,7 +1253,7 @@ if (workType === 'pre') {
                                 }
                                 className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
                               >
-                                {endHourOptions.map((h) => (
+                                {getEndHourOptionsForLog(log).map((h) => (
                                   <option key={h} value={h}>
                                     {h}시
                                   </option>
@@ -1398,6 +1475,37 @@ if (workType === 'pre') {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
+  <div>
+    <label className="block text-sm font-bold text-gray-700 mb-2">
+      근무 구분
+    </label>
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        onClick={() => setWorkDayType('weekday')}
+        className={`py-2.5 rounded-xl font-bold text-sm border transition-colors ${
+          workDayType === 'weekday'
+            ? 'bg-[#1E3A8A] text-white border-[#1E3A8A]'
+            : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        평일근무
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setWorkDayType('weekend')}
+        className={`py-2.5 rounded-xl font-bold text-sm border transition-colors ${
+          workDayType === 'weekend'
+            ? 'bg-[#1E3A8A] text-white border-[#1E3A8A]'
+            : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        주말근무
+      </button>
+    </div>
+  </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1.5">
@@ -1455,7 +1563,7 @@ if (workType === 'pre') {
                       className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
                       required
                     >
-                      {startHourOptions.map((h) => (
+                      {currentStartHourOptions.map((h) => (
                         <option key={h} value={h}>
                           {h}시
                         </option>
@@ -1499,7 +1607,7 @@ if (workType === 'pre') {
                       className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
                       required
                     >
-                      {endHourOptions.map((h) => (
+                      {currentEndHourOptions.map((h) => (
                         <option key={h} value={h}>
                           {h}시
                         </option>
@@ -1530,20 +1638,23 @@ if (workType === 'pre') {
 
               <div className="bg-[#EEF2FF] p-4 rounded-xl flex justify-between items-center border border-[#A5B4FC]">
                 <label className="text-sm font-bold text-[#1E3A8A] flex flex-col">
-                  <span>수당시간 (직접 입력)</span>
+                  <span>수당시간 (자동 입력)</span>
                   <span className="text-xs text-[#4F46E5] mt-0.5 font-medium">
-                    ※ 정규시간(09~18시) 제외, 최대 4시간
-                  </span>
+                 {workDayType === 'weekday'
+                  ? '※ 평일 : 정규시간(09~18시) 제외, 최대 4시간'
+                  : '※ 주말⋅공휴일 : 4시간 이상 근무 시 휴게시간 차감, 수당시간 최대 8시간'}
+                 </span>
+
                 </label>
                 <div className="flex items-center space-x-2">
                   <input
                     type="number"
                     name="duration"
                     value={formData.duration}
-                    onChange={handleFormChange}
+                    readOnly
                     step="0.5"
                     min="0"
-                    max="4"
+                    max={workDayType === 'weekday' ? 4 : 8}
                     className="w-20 px-2 py-1 text-right text-xl font-extrabold text-[#1E3A8A] bg-white border border-[#A5B4FC] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
                     required
                   />
