@@ -1520,7 +1520,7 @@ const getEndHourOptionsForLog = (log) =>
                       value={userName}
                       onChange={handleNameChange}
                       placeholder="본인 성명"
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+                      className="w-full h-[46px] pl-10 pr-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none text-base"
                       required
                     />
                   </div>
@@ -1534,13 +1534,13 @@ const getEndHourOptionsForLog = (log) =>
                       <Calendar size={18} className="text-gray-400" />
                     </div>
                     <input
-                      type="date"
-                      name="date"
-                      value={formData.date}
-                      onChange={handleFormChange}
-                      className="w-full h-11 pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none text-sm sm:text-base"
-                      required
-                    />
+                     type="date"
+                     name="date"
+                     value={formData.date}
+                     onChange={handleFormChange}
+                     className="w-full h-[46px] pl-10 pr-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none text-base"
+                     required
+                     />
                   </div>
                 </div>
               </div>
@@ -1636,33 +1636,33 @@ const getEndHourOptionsForLog = (log) =>
                 </div>
               </div>
 
-              <div className="bg-[#EEF2FF] p-4 rounded-xl flex justify-between items-center border border-[#A5B4FC]">
-                <label className="text-sm font-bold text-[#1E3A8A] flex flex-col">
-                  <span>수당시간 (자동 입력)</span>
-                  <span className="text-xs text-[#4F46E5] mt-0.5 font-medium">
-                 {workDayType === 'weekday'
-                  ? '※ 평일 : 정규시간(09~18시) 제외, 최대 4시간'
-                  : '※ 주말⋅공휴일 : 4시간 이상 근무 시 휴게시간 차감, 수당시간 최대 8시간'}
-                 </span>
+              <div className="bg-[#EEF2FF] p-4 rounded-xl border border-[#A5B4FC]">
+  <label className="text-sm font-bold text-[#1E3A8A] flex flex-col mb-3">
+    <span>수당시간 (자동 입력)</span>
+    <span className="text-xs text-[#4F46E5] mt-0.5 font-medium leading-snug">
+      {workDayType === 'weekday'
+        ? '※ 평일 : 정규시간(09~18시) 제외, 최대 4시간'
+        : '※ 주말⋅공휴일 : 4시간 이상 근무 시 휴게시간 차감, 수당시간 최대 8시간'}
+    </span>
+  </label>
 
-                </label>
-                <div className="flex items-center space-x-2">
-
-                <input
-                 type="number"
-                 name="duration"
-                 value={formData.duration}
-                 readOnly
-                 step="0.5"
-                 min="0"
-                 max={workDayType === 'weekday' ? 4 : 8}
-                 className="w-16 sm:w-20 px-2 py-1 text-right text-lg sm:text-xl font-extrabold text-[#1E3A8A] bg-white border border-[#A5B4FC] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
-                 required
-                 />
-                 <span className="text-lg sm:text-xl font-extrabold text-[#1E3A8A]">
-                 시간
-                </span>
-                </div>
+  <div className="flex items-center justify-end gap-2">
+    <input
+      type="number"
+      name="duration"
+      value={formData.duration}
+      readOnly
+      step="0.5"
+      min="0"
+      max={workDayType === 'weekday' ? 4 : 8}
+      className="w-20 h-11 px-2 text-right text-xl font-extrabold text-[#1E3A8A] bg-white border border-[#A5B4FC] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
+      required
+    />
+    <span className="text-xl font-extrabold text-[#1E3A8A] whitespace-nowrap">
+      시간
+    </span>
+  </div>
+                
               </div>
 
               <div>
