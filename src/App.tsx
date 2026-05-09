@@ -1538,7 +1538,7 @@ const getEndHourOptionsForLog = (log) =>
                       name="date"
                       value={formData.date}
                       onChange={handleFormChange}
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+                      className="w-full h-11 pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none text-sm sm:text-base"
                       required
                     />
                   </div>
@@ -1647,20 +1647,21 @@ const getEndHourOptionsForLog = (log) =>
 
                 </label>
                 <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    name="duration"
-                    value={formData.duration}
-                    readOnly
-                    step="0.5"
-                    min="0"
-                    max={workDayType === 'weekday' ? 4 : 8}
-                    className="w-20 px-2 py-1 text-right text-xl font-extrabold text-[#1E3A8A] bg-white border border-[#A5B4FC] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
-                    required
-                  />
-                  <span className="text-xl font-extrabold text-[#1E3A8A]">
-                    시간
-                  </span>
+
+                <input
+                 type="number"
+                 name="duration"
+                 value={formData.duration}
+                 readOnly
+                 step="0.5"
+                 min="0"
+                 max={workDayType === 'weekday' ? 4 : 8}
+                 className="w-16 sm:w-20 px-2 py-1 text-right text-lg sm:text-xl font-extrabold text-[#1E3A8A] bg-white border border-[#A5B4FC] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
+                 required
+                 />
+                 <span className="text-lg sm:text-xl font-extrabold text-[#1E3A8A]">
+                 시간
+                </span>
                 </div>
               </div>
 
