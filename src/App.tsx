@@ -912,12 +912,12 @@ const getEndHourOptionsForLog = (log) =>
               절영종합사회복지관
             </h1>
   
-            <div className="flex items-center justify-center gap-4 mt-5">
-              <div className="h-px w-16 md:w-24 bg-[#E9A5C1]" />
-              <p className="text-lg md:text-2xl tracking-[0.25em] text-[#6B5E58]">
-                업무 통합 시스템
+             <div className="flex items-center justify-center gap-4 mt-5">
+             <div className="h-px w-10 md:w-24 bg-[#E9A5C1]" />
+              <p className="text-base md:text-2xl tracking-[0.12em] md:tracking-[0.25em] text-[#6B5E58] whitespace-nowrap">
+              업무 통합 시스템
               </p>
-              <div className="h-px w-16 md:w-24 bg-[#E9A5C1]" />
+             <div className="h-px w-10 md:w-24 bg-[#E9A5C1]" />
             </div>
           </section>
   
