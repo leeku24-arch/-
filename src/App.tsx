@@ -81,16 +81,15 @@ const formatTime = (value) => {
   return str;
 };
 
-// 출근시간: 05 ~ 12
-const startHourOptions = Array.from({ length: 8 }, (_, i) =>
+// 평일 출근시간: 05 ~ 09
+const startHourOptions = Array.from({ length: 5 }, (_, i) =>
   String(i + 5).padStart(2, '0')
 );
 
-// 퇴근시간: 12 ~ 23 + 00
-const endHourOptions = [
-  ...Array.from({ length: 12 }, (_, i) => String(i + 12).padStart(2, '0')),
-  '00',
-];
+// 평일 퇴근시간: 18 ~ 22
+const endHourOptions = Array.from({ length: 5 }, (_, i) =>
+  String(i + 18).padStart(2, '0')
+);
 
 // 주말근무: 00 ~ 23 전체 선택 가능
 const weekendHourOptions = Array.from({ length: 24 }, (_, i) =>
@@ -119,6 +118,7 @@ const getLocalUserId = () => {
 
 export default function App() {
   const [logs, setLogs] = useState([]);
+  const [currentPage, setCurrentPage] = useState('home');
   const [view, setView] = useState('list');
   const [workType, setWorkType] = useState('pre');
   const [workDayType, setWorkDayType] = useState('weekday');
@@ -212,8 +212,10 @@ export default function App() {
 
   // 월이 바뀔 때마다 해당 월의 데이터를 새로 불러옴
   useEffect(() => {
-    fetchLogs();
-  }, [selectedMonth]);
+    if (currentPage === 'overtime') {
+      fetchLogs();
+    }
+  }, [selectedMonth, currentPage]);
 
   // --- Helpers ---
   const showToast = (message, type = 'success') => {
@@ -358,7 +360,7 @@ export default function App() {
     setIsLoading(true);
 
 const linkedId =
-  'pair_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
+'pair_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
 
   const baseLog = {
     userId: currentUserId,
@@ -749,6 +751,37 @@ if (workType === 'pre') {
     }
   };
 
+  const mainMenus = [
+    {
+      id: 'overtime',
+      title: '시간외근무 대장',
+      description: '근무 기록 조회 및 등록',
+      icon: CheckCircle,
+      active: true,
+    },
+    {
+      id: 'coming-1',
+      title: '추가 예정',
+      description: '준비 중인 기능입니다',
+      icon: Calendar,
+      active: false,
+    },
+    {
+      id: 'coming-2',
+      title: '추가 예정',
+      description: '준비 중인 기능입니다',
+      icon: FileText,
+      active: false,
+    },
+    {
+      id: 'coming-3',
+      title: '추가 예정',
+      description: '준비 중인 기능입니다',
+      icon: User,
+      active: false,
+    },
+  ];
+
   const currentStartHourOptions =
   workDayType === 'weekend' ? weekendHourOptions : startHourOptions;
 
@@ -864,6 +897,110 @@ const getEndHourOptionsForLog = (log) =>
   const yearOptions = Array.from({ length: 7 }, (_, i) => 2024 + i);
   const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);
 
+  if (currentPage === 'home') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] text-gray-800 font-sans px-5 py-8">
+        <div className="max-w-5xl mx-auto">
+          <section className="bg-white rounded-[2rem] shadow-sm border border-gray-100 px-6 py-10 mb-8 text-center overflow-hidden">
+            <img
+              src={jyLogo}
+              alt="절영종합사회복지관 로고"
+              className="w-24 h-24 object-contain mx-auto mb-4"
+            />
+  
+            <h1 className="text-3xl md:text-5xl font-extrabold text-[#2B211F] tracking-tight">
+              절영종합사회복지관
+            </h1>
+  
+            <div className="flex items-center justify-center gap-4 mt-5">
+              <div className="h-px w-16 md:w-24 bg-[#E9A5C1]" />
+              <p className="text-lg md:text-2xl tracking-[0.25em] text-[#6B5E58]">
+                업무 통합 시스템
+              </p>
+              <div className="h-px w-16 md:w-24 bg-[#E9A5C1]" />
+            </div>
+          </section>
+  
+          <section className="grid grid-cols-2 gap-4 md:gap-6">
+            {mainMenus.map((menu) => {
+              const Icon = menu.icon;
+  
+              return (
+                <button
+                  key={menu.id}
+                  type="button"
+                  onClick={() => {
+                    if (menu.active) {
+                      setCurrentPage('overtime');
+                      setView('list');
+                      setWorkType('pre');
+                    } else {
+                      showToast('준비 중인 기능입니다.', 'error');
+                    }
+                  }}
+                  className={`bg-white rounded-[1.5rem] border p-5 md:p-8 min-h-[170px] md:min-h-[220px] shadow-sm transition-all text-center flex flex-col items-center justify-center ${
+                    menu.active
+                      ? 'border-[#7AA51D] hover:shadow-md hover:-translate-y-0.5'
+                      : 'border-gray-100 hover:bg-gray-50'
+                  }`}
+                >
+                  <div
+                    className={`w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center mb-5 ${
+                      menu.active ? 'bg-[#F1F8E8]' : 'bg-[#F8F5F2]'
+                    }`}
+                  >
+                    <Icon
+                      size={38}
+                      className={
+                        menu.active ? 'text-[#7AA51D]' : 'text-[#8B7E77]'
+                      }
+                    />
+                  </div>
+  
+                  <h2 className="text-xl md:text-2xl font-extrabold text-[#2B211F] mb-2">
+                    {menu.title}
+                  </h2>
+  
+                  <p className="text-sm md:text-base text-[#6B5E58]">
+                    {menu.description}
+                  </p>
+                </button>
+              );
+            })}
+          </section>
+  
+          <div className="flex items-center justify-center gap-4 mt-8 text-[#6B5E58]">
+            <div className="h-px flex-1 bg-[#E9A5C1]" />
+            <div className="flex items-center gap-2 text-sm md:text-base whitespace-nowrap">
+              <span className="w-6 h-6 rounded-full border border-[#E9A5C1] text-[#E7478A] flex items-center justify-center text-xs font-bold">
+                i
+              </span>
+              <span>원하는 기능을 선택하세요.</span>
+            </div>
+            <div className="h-px flex-1 bg-[#E9A5C1]" />
+          </div>
+        </div>
+  
+        {toast.show && (
+          <div
+            className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white transition-opacity duration-300 ${
+              toast.type === 'error' ? 'bg-red-500' : 'bg-green-600'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {toast.type === 'error' ? (
+                <XCircle size={20} />
+              ) : (
+                <CheckCircle size={20} />
+              )}
+              <span className="font-medium">{toast.message}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-gray-800 font-sans pb-20 md:pb-8 relative">
       {/* 로딩 오버레이 (통신 중일 때 표시) */}
@@ -945,23 +1082,34 @@ const getEndHourOptionsForLog = (log) =>
 
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white shadow-sm overflow-hidden">
-          <img
-           src={jyLogo}
-           alt="절영종합사회복지관 로고"
-           className="w-11 h-11 object-contain"
-           />
-           </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 leading-tight">
-                절영종합사회복지관
-              </h1>
-              <p className="text-sm text-gray-500">
-                시간외근무 관리 시스템
-              </p>
-            </div>
-          </div>
+          
+        <div className="flex items-center space-x-3">
+  <button
+    type="button"
+    onClick={() => setCurrentPage('home')}
+    className="p-2 rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200"
+    title="메인으로"
+  >
+    <ChevronLeft size={20} />
+  </button>
+
+  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white shadow-sm overflow-hidden">
+    <img
+      src={jyLogo}
+      alt="절영종합사회복지관 로고"
+      className="w-full h-full object-contain"
+    />
+  </div>
+
+  <div>
+    <h1 className="text-xl font-bold text-gray-900 leading-tight">
+      절영종합사회복지관
+    </h1>
+    <p className="text-sm text-gray-500">
+      시간외근무 관리 시스템
+    </p>
+  </div>
+</div>
           <button
             onClick={toggleManagerMode}
             title="결재권자 로그인"
@@ -1644,10 +1792,20 @@ const getEndHourOptionsForLog = (log) =>
               <div className="bg-[#EEF2FF] p-4 rounded-xl border border-[#A5B4FC]">
   <label className="text-sm font-bold text-[#1E3A8A] flex flex-col mb-3">
     <span>수당시간 (자동 입력)</span>
+
     <span className="text-xs text-[#4F46E5] mt-0.5 font-medium leading-snug">
-      {workDayType === 'weekday'
-        ? '※ 평일 : 정규시간(09~18시) 제외, 최대 4시간'
-        : '※ 주말⋅공휴일 : 4시간 이상 근무 시 휴게시간 차감, 수당시간 최대 8시간'}
+      {workDayType === 'weekday' ? (
+        '※ 평일 : 정규시간(09~18시) 제외, 최대 4시간'
+      ) : (
+        <>
+          <span className="block">
+            ※ 주말⋅공휴일 : 4시간 이상 근무 시 휴게시간 차감
+          </span>
+          <span className="block pl-[12px]">
+            수당시간 최대 8시간
+          </span>
+        </>
+      )}
     </span>
   </label>
 
@@ -1667,8 +1825,7 @@ const getEndHourOptionsForLog = (log) =>
       시간
     </span>
   </div>
-                
-              </div>
+</div>
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1.5">
