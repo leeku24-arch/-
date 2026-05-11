@@ -1269,7 +1269,7 @@ const getEndHourOptionsForLog = (log) =>
 
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mt-4 gap-3">
   <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 w-full md:w-auto">
-    <div className="relative flex-1 md:flex-none">
+  <div className="relative flex-1 md:flex-none w-full md:w-48">
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
         <Search size={16} className="text-gray-400" />
       </div>
@@ -1278,21 +1278,21 @@ const getEndHourOptionsForLog = (log) =>
         placeholder="성명 검색..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full md:w-48 pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm"
+        className="w-full pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm box-border"
       />
     </div>
 
-    <div className="relative flex-1 md:flex-none">
-      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-        <Calendar size={16} className="text-gray-400" />
-      </div>
-      <input
-        type="date"
-        value={dateQuery}
-        onChange={handleDateSearchChange}
-        className="w-full md:w-44 pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm"
-      />
-    </div>
+    <div className="relative flex-1 md:flex-none w-full md:w-48">
+  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+    <Calendar size={16} className="text-gray-400" />
+  </div>
+  <input
+    type="date"
+    value={dateQuery}
+    onChange={handleDateSearchChange}
+    className="w-full pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm box-border"
+  />
+</div>
 
     {(searchQuery.trim() || dateQuery) && (
       <button
