@@ -124,6 +124,7 @@ export default function App() {
   const [workDayType, setWorkDayType] = useState('weekday');
   const [userName, setUserName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [dateQuery, setDateQuery] = useState('');
   const [toast, setToast] = useState({
     show: false,
     message: '',
@@ -280,6 +281,15 @@ export default function App() {
     const newName = e.target.value;
     setUserName(newName);
     localStorage.setItem('jy_userName', newName);
+  };
+
+  const handleDateSearchChange = (e) => {
+    const value = e.target.value;
+    setDateQuery(value);
+  
+    if (value) {
+      setSelectedMonth(value.substring(0, 7));
+    }
   };
 
   const handleFormChange = (e) => {
@@ -703,6 +713,8 @@ if (workType === 'pre') {
 
   // --- UI 핸들러 ---
   const handlePrevMonth = () => {
+    setDateQuery('');
+  
     let [year, month] = selectedMonth.split('-').map(Number);
     month -= 1;
     if (month === 0) {
@@ -711,7 +723,10 @@ if (workType === 'pre') {
     }
     setSelectedMonth(`${year}-${String(month).padStart(2, '0')}`);
   };
+  
   const handleNextMonth = () => {
+    setDateQuery('');
+  
     let [year, month] = selectedMonth.split('-').map(Number);
     month += 1;
     if (month === 13) {
@@ -720,15 +735,21 @@ if (workType === 'pre') {
     }
     setSelectedMonth(`${year}-${String(month).padStart(2, '0')}`);
   };
-  const handleYearSelect = (e) =>
+  
+  const handleYearSelect = (e) => {
+    setDateQuery('');
     setSelectedMonth(`${e.target.value}-${selectedMonth.split('-')[1]}`);
-  const handleMonthSelect = (e) =>
+  };
+  
+  const handleMonthSelect = (e) => {
+    setDateQuery('');
     setSelectedMonth(
       `${selectedMonth.split('-')[0]}-${String(e.target.value).padStart(
         2,
         '0'
       )}`
     );
+  };
 
   const toggleManagerMode = () => {
     if (isManager) {
@@ -882,8 +903,12 @@ const getEndHourOptionsForLog = (log) =>
       );
     }
   
+    if (dateQuery) {
+      filtered = filtered.filter((log) => formatDate(log.date) === dateQuery);
+    }
+
     return filtered;
-  }, [logs, searchQuery, selectedMonth, workType]);
+  }, [logs, searchQuery, dateQuery, selectedMonth, workType]);
 
   const displayedTotalHours = useMemo(() => {
     return displayedLogs
@@ -1243,36 +1268,62 @@ const getEndHourOptionsForLog = (log) =>
             </div>
 
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mt-4 gap-3">
-              <div className="flex items-center space-x-3 w-full md:w-auto">
-                <div className="relative flex-1 md:flex-none">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Search size={16} className="text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="성명 검색..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full md:w-48 pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm"
-                  />
-                </div>
-                {searchQuery.trim() && (
-                  <span className="text-sm font-bold text-[#1E3A8A] bg-[#EEF2FF] px-3 py-2 rounded-lg border border-[#A5B4FC] whitespace-nowrap">
-                    누적: {displayedTotalHours}시간
-                  </span>
-                )}
-              </div>
+  <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 w-full md:w-auto">
+    <div className="relative flex-1 md:flex-none">
+      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <Search size={16} className="text-gray-400" />
+      </div>
+      <input
+        type="text"
+        placeholder="성명 검색..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="w-full md:w-48 pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm"
+      />
+    </div>
 
-              <div className="flex items-center justify-between w-full md:w-auto md:space-x-3">
-                <button
-                  onClick={exportToExcel}
-                  className="flex items-center space-x-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
-                >
-                  <Download size={16} />
-                  <span>엑셀 다운로드</span>
-                </button>
-              </div>
-            </div>
+    <div className="relative flex-1 md:flex-none">
+      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <Calendar size={16} className="text-gray-400" />
+      </div>
+      <input
+        type="date"
+        value={dateQuery}
+        onChange={handleDateSearchChange}
+        className="w-full md:w-44 pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm"
+      />
+    </div>
+
+    {(searchQuery.trim() || dateQuery) && (
+      <button
+        type="button"
+        onClick={() => {
+          setSearchQuery('');
+          setDateQuery('');
+        }}
+        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-bold"
+      >
+        검색 초기화
+      </button>
+    )}
+
+    {(searchQuery.trim() || dateQuery) && (
+      <span className="text-sm font-bold text-[#1E3A8A] bg-[#EEF2FF] px-3 py-2 rounded-lg border border-[#A5B4FC] whitespace-nowrap">
+        누적: {displayedTotalHours}시간
+      </span>
+    )}
+  </div>
+
+  <div className="flex items-center justify-between w-full md:w-auto md:space-x-3">
+    <button
+      onClick={exportToExcel}
+      className="flex items-center space-x-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
+    >
+      <Download size={16} />
+      <span>엑셀 다운로드</span>
+    </button>
+  </div>
+</div>
 
             <div className="bg-white border border-[#A5B4FC] shadow-sm overflow-x-auto">
               <table className="w-full text-sm text-center whitespace-nowrap min-w-[800px]">
