@@ -2812,3 +2812,4 @@ const getEndHourOptionsForLog = (log) =>
     </div>
   );
 }
+
