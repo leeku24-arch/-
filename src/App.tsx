@@ -10,8 +10,6 @@ import {
   Trash2,
   Search,
   Download,
-  ShieldCheck,
-  Lock,
   ChevronLeft,
   ChevronRight,
   RotateCcw,
@@ -105,34 +103,48 @@ const splitTime = (time) => {
 
 const makeTime = (hour, minute) => `${hour}:${minute}`;
 
-// 로컬 사용자 ID 생성 (본인 글 삭제 권한 확인용)
-const getLocalUserId = () => {
-  let id = localStorage.getItem('jy_local_uid');
-  if (!id) {
-    id =
-      'user_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
-    localStorage.setItem('jy_local_uid', id);
-  }
-  return id;
-};
-
 export default function App() {
   const [logs, setLogs] = useState([]);
   const [currentPage, setCurrentPage] = useState('home');
   const [view, setView] = useState('list');
   const [workType, setWorkType] = useState('pre');
   const [workDayType, setWorkDayType] = useState('weekday');
-  const [userName, setUserName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateQuery, setDateQuery] = useState('');
+  const [staffList, setStaffList] = useState([]);
+  const [staffFilters, setStaffFilters] = useState({
+    department: '',
+    position: '',
+    status: '',
+  });
+  const [currentStaff, setCurrentStaff] = useState(null);
+  const [loginForm, setLoginForm] = useState({
+  name: '',
+  pin: '',
+  });
+  const [staffForm, setStaffForm] = useState({
+    name: '',
+    department: '',
+    position: '',
+    role: 'staff',
+    pin: '',
+  });
+
+  const [editingStaffId, setEditingStaffId] = useState(null);
+  const [staffEditForm, setStaffEditForm] = useState({
+    name: '',
+    department: '',
+    position: '',
+    status: '재직',
+    role: 'staff',
+    pin: '',
+  });
+
   const [toast, setToast] = useState({
     show: false,
     message: '',
     type: 'success',
   });
-  const [isManager, setIsManager] = useState(false);
-  const [showPwdModal, setShowPwdModal] = useState(false);
-  const [pwdInput, setPwdInput] = useState('');
   const [isLoading, setIsLoading] = useState(false); // 로딩 상태 추가
   const [editingLogId, setEditingLogId] = useState(null);
   const [editData, setEditData] = useState({
@@ -142,7 +154,11 @@ export default function App() {
   });
 
   const [selectedMonth, setSelectedMonth] = useState(getLocalMonthStr());
-  const currentUserId = getLocalUserId();
+
+  const isManagerUser =
+  String(currentStaff?.role || '').trim().toLowerCase() === 'manager' ||
+  String(currentStaff?.role || '').trim().toLowerCase() === 'admin' ||
+  String(currentStaff?.role || '').trim() === '관리자';
 
   const [formData, setFormData] = useState({
     date: getLocalDateStr(),
@@ -205,10 +221,95 @@ export default function App() {
     }
   };
 
-  // 사용자 이름 로드용
+  const positionOrder = {
+    관장: 1,
+    부장: 2,
+    과장: 3,
+    팀장: 4,
+    대리: 5,
+    사회복지사: 6,
+  };
+
+  const statusOrder = {
+    재직: 1,
+    휴직: 2,
+    퇴사: 3,
+  };
+
+  const departmentOptions = [
+    '총괄',
+    '운영지원팀',
+    '사례관리팀',
+    '지역조직팀',
+    '서비스제공팀',
+  ];
+
+  const statusOptions = ['재직', '휴직', '퇴사'];
+
+  const fetchStaffList = async () => {
+    if (GOOGLE_SCRIPT_URL === '여기에_웹앱_URL을_붙여넣으세요') return;
+  
+    setIsLoading(true);
+  
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({
+          action: 'getStaffList',
+        }),
+      });
+  
+      const text = await response.text();
+      const result = JSON.parse(text);
+  
+      if (!result.success) {
+        showToast(result.message || '직원 목록을 불러오지 못했습니다.', 'error');
+        setIsLoading(false);
+        return;
+      }
+  
+      const sortedStaff = [...(result.data || [])].sort((a, b) => {
+        const aStatusRank = statusOrder[a.status] || 999;
+        const bStatusRank = statusOrder[b.status] || 999;
+      
+        if (aStatusRank !== bStatusRank) {
+          return aStatusRank - bStatusRank;
+        }
+      
+        const aRank = positionOrder[a.position] || 999;
+        const bRank = positionOrder[b.position] || 999;
+      
+        if (aRank !== bRank) {
+          return aRank - bRank;
+        }
+      
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ko-KR');
+      });
+      setStaffList(sortedStaff);
+    } catch (error) {
+      console.error('직원 목록 불러오기 오류:', error);
+      showToast('직원 목록을 불러오는 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 로그인 상태 복원용
+
   useEffect(() => {
-    const savedName = localStorage.getItem('jy_userName');
-    if (savedName) setUserName(savedName);
+    const savedStaff = localStorage.getItem('jy_currentStaff');
+  
+    if (savedStaff) {
+      try {
+        const parsedStaff = JSON.parse(savedStaff);
+        setCurrentStaff(parsedStaff);
+      } catch (error) {
+        localStorage.removeItem('jy_currentStaff');
+      }
+    }
   }, []);
 
   // 월이 바뀔 때마다 해당 월의 데이터를 새로 불러옴
@@ -217,6 +318,12 @@ export default function App() {
       fetchLogs();
     }
   }, [selectedMonth, currentPage]);
+
+  useEffect(() => {
+    if (currentPage === 'staff') {
+      fetchStaffList();
+    }
+  }, [currentPage]);
 
   // --- Helpers ---
   const showToast = (message, type = 'success') => {
@@ -277,11 +384,6 @@ export default function App() {
   }, [workDayType]);
 
   // --- Actions ---
-  const handleNameChange = (e) => {
-    const newName = e.target.value;
-    setUserName(newName);
-    localStorage.setItem('jy_userName', newName);
-  };
 
   const handleDateSearchChange = (e) => {
     const value = e.target.value;
@@ -331,6 +433,284 @@ export default function App() {
     });
   };
 
+  const handleStaffFormChange = (e) => {
+    const { name, value } = e.target;
+  
+    setStaffForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+  
+  const handleStaffFilterChange = (e) => {
+    const { name, value } = e.target;
+  
+    setStaffFilters((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+  
+  const resetStaffFilters = () => {
+    setStaffFilters({
+      department: '',
+      position: '',
+      status: '',
+    });
+  };
+
+  const handleLoginFormChange = (e) => {
+    const { name, value } = e.target;
+  
+    setLoginForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+  
+  const handleStaffLogin = async (e) => {
+    e.preventDefault();
+  
+    if (!loginForm.name.trim()) {
+      showToast('성명을 입력해주세요.', 'error');
+      return;
+    }
+  
+    if (!/^\d{6}$/.test(loginForm.pin)) {
+      showToast('PIN은 숫자 6자리로 입력해주세요.', 'error');
+      return;
+    }
+  
+    setIsLoading(true);
+  
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({
+          action: 'loginStaff',
+          name: loginForm.name.trim(),
+          pin: loginForm.pin,
+        }),
+      });
+  
+      const text = await response.text();
+      const result = JSON.parse(text);
+  
+      if (!result.success) {
+        showToast(result.message || '로그인에 실패했습니다.', 'error');
+        setIsLoading(false);
+        return;
+      }
+  
+      const loggedInStaff = result.data;
+  
+      setCurrentStaff(loggedInStaff);
+      localStorage.setItem('jy_currentStaff', JSON.stringify(loggedInStaff));
+  
+      setLoginForm({
+        name: '',
+        pin: '',
+      });
+  
+      showToast(`${loggedInStaff.name}님 로그인되었습니다.`);
+    } catch (error) {
+      console.error('직원 로그인 오류:', error);
+      showToast('로그인 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleStaffLogout = () => {
+    setCurrentStaff(null);
+  
+    localStorage.removeItem('jy_currentStaff');
+  
+    showToast('로그아웃되었습니다.');
+  };
+
+  const handleAddStaff = async (e) => {
+    e.preventDefault();
+  
+    if (!staffForm.name.trim()) {
+      showToast('직원 성명을 입력해주세요.', 'error');
+      return;
+    }
+  
+    if (!staffForm.department.trim()) {
+      showToast('부서를 입력해주세요.', 'error');
+      return;
+    }
+  
+    if (!staffForm.position.trim()) {
+      showToast('직책을 입력해주세요.', 'error');
+      return;
+    }
+  
+    if (!/^\d{6}$/.test(staffForm.pin)) {
+      showToast('PIN은 숫자 6자리로 입력해주세요.', 'error');
+      return;
+    }
+  
+    const newStaff = {
+      id:
+        'staff_' +
+        Date.now().toString(36) +
+        Math.random().toString(36).substr(2),
+      name: staffForm.name.trim(),
+      department: staffForm.department.trim(),
+      position: staffForm.position.trim(),
+      status: '재직',
+      role: staffForm.role,
+      pin: staffForm.pin,
+      sortOrder: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: '',
+    };
+  
+    setIsLoading(true);
+  
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({
+          action: 'addStaff',
+          data: newStaff,
+        }),
+      });
+  
+      const text = await response.text();
+      const result = JSON.parse(text);
+  
+      if (!result.success) {
+        showToast(result.message || '직원 등록에 실패했습니다.', 'error');
+        setIsLoading(false);
+        return;
+      }
+  
+      showToast('직원 정보가 등록되었습니다.');
+  
+      setStaffForm({
+        name: '',
+        department: '',
+        position: '',
+        role: 'staff',
+        pin: '',
+      });
+  
+      fetchStaffList();
+    } catch (error) {
+      console.error('직원 등록 오류:', error);
+      showToast('직원 등록 중 오류가 발생했습니다.', 'error');
+      setIsLoading(false);
+    }
+  };
+
+  const handleStaffEditStart = (staff) => {
+    setEditingStaffId(staff.id);
+    setStaffEditForm({
+      name: staff.name || '',
+      department: staff.department || '',
+      position: staff.position || '',
+      status: staff.status || '재직',
+      role: staff.role || 'staff',
+      pin: staff.pin || '',
+    });
+  };
+  
+  const handleStaffEditCancel = () => {
+    setEditingStaffId(null);
+    setStaffEditForm({
+      name: '',
+      department: '',
+      position: '',
+      status: '재직',
+      role: 'staff',
+      pin: '',
+    });
+  };
+  
+  const handleStaffEditFormChange = (e) => {
+    const { name, value } = e.target;
+  
+    setStaffEditForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+  
+  const handleUpdateStaff = async (staff) => {
+    if (!staffEditForm.name.trim()) {
+      showToast('직원 성명을 입력해주세요.', 'error');
+      return;
+    }
+  
+    if (!staffEditForm.department.trim()) {
+      showToast('부서를 입력해주세요.', 'error');
+      return;
+    }
+  
+    if (!staffEditForm.position.trim()) {
+      showToast('직책을 선택해주세요.', 'error');
+      return;
+    }
+  
+    if (!/^\d{6}$/.test(staffEditForm.pin)) {
+      showToast('PIN은 숫자 6자리로 입력해주세요.', 'error');
+      return;
+    }
+  
+    const updatedStaff = {
+      ...staff,
+      name: staffEditForm.name.trim(),
+      department: staffEditForm.department.trim(),
+      position: staffEditForm.position,
+      status: staffEditForm.status || '재직',
+      role: staffEditForm.role,
+      pin: staffEditForm.pin,
+      sortOrder: staff.sortOrder || '',
+    };
+  
+    setIsLoading(true);
+  
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({
+          action: 'updateStaff',
+          id: staff.id,
+          data: updatedStaff,
+        }),
+      });
+  
+      const text = await response.text();
+      const result = JSON.parse(text);
+  
+      if (!result.success) {
+        showToast(result.message || '직원 정보 수정에 실패했습니다.', 'error');
+        setIsLoading(false);
+        return;
+      }
+  
+      showToast('직원 정보가 수정되었습니다.');
+      setEditingStaffId(null);
+      fetchStaffList();
+    } catch (error) {
+      console.error('직원 정보 수정 오류:', error);
+      showToast('직원 정보 수정 중 오류가 발생했습니다.', 'error');
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -344,8 +724,8 @@ export default function App() {
       showToast('구글 스크립트 URL이 설정되지 않았습니다.', 'error');
       return;
     }
-    if (!userName.trim()) {
-      showToast('성명을 입력해주세요.', 'error');
+    if (!currentStaff) {
+      showToast('로그인 후 근무를 등록할 수 있습니다.', 'error');
       return;
     }
     if (!formData.reason.trim()) {
@@ -372,18 +752,18 @@ export default function App() {
 const linkedId =
 'pair_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-  const baseLog = {
-    userId: currentUserId,
-    userName,
-    date: formData.date,
-    startTime: formData.startTime,
-    endTime: formData.endTime,
-    duration: parseFloat(formData.duration),
-    reason: formData.reason,
-    status: '대기',
-    createdAt: new Date().toISOString(),
-    workDayType,
-  };
+const baseLog = {
+  userId: currentStaff.id,
+  userName: currentStaff.name,
+  date: formData.date,
+  startTime: formData.startTime,
+  endTime: formData.endTime,
+  duration: parseFloat(formData.duration),
+  reason: formData.reason,
+  status: '대기',
+  createdAt: new Date().toISOString(),
+  workDayType,
+};
 
 let logsToAdd = [];
 
@@ -462,7 +842,7 @@ if (workType === 'pre') {
       : [targetLog];
   
     // 결재 완료된 기록이 포함되어 있으면 일반 직원은 삭제 불가
-    if (!isManager) {
+    if (!isManagerUser) {
       const hasApprovedOrRejected = deleteTargets.some(
         (log) => log.status !== '대기'
       );
@@ -474,9 +854,9 @@ if (workType === 'pre') {
     }
   
     // 일반 직원은 본인 기록만 삭제 가능
-    if (!isManager) {
+    if (!isManagerUser) {
       const hasOtherUserLog = deleteTargets.some(
-        (log) => log.userId !== currentUserId
+        (log) => log.userId !== currentStaff?.id
       );
   
       if (hasOtherUserLog) {
@@ -526,9 +906,9 @@ if (workType === 'pre') {
 
   const canEditLog = (log) => {
     return (
-      isManager ||
+      isManagerUser ||
       (log.type === 'post' &&
-        log.userId === currentUserId &&
+        log.userId === currentStaff?.id &&
         log.status === '대기')
     );
   };
@@ -678,7 +1058,7 @@ if (workType === 'pre') {
 
   // 상태 변경 시 어떤 월(탭)에서 변경할지 날짜 정보(logDate) 추가
   const handleStatusChange = async (id, newStatus, logDate) => {
-    if (!isManager) return;
+    if (!isManagerUser) return;
   
     setIsLoading(true);
   
@@ -714,7 +1094,7 @@ if (workType === 'pre') {
   // --- UI 핸들러 ---
   const handlePrevMonth = () => {
     setDateQuery('');
-  
+
     let [year, month] = selectedMonth.split('-').map(Number);
     month -= 1;
     if (month === 0) {
@@ -723,9 +1103,9 @@ if (workType === 'pre') {
     }
     setSelectedMonth(`${year}-${String(month).padStart(2, '0')}`);
   };
-  
   const handleNextMonth = () => {
     setDateQuery('');
+
   
     let [year, month] = selectedMonth.split('-').map(Number);
     month += 1;
@@ -735,42 +1115,21 @@ if (workType === 'pre') {
     }
     setSelectedMonth(`${year}-${String(month).padStart(2, '0')}`);
   };
-  
+
   const handleYearSelect = (e) => {
-    setDateQuery('');
-    setSelectedMonth(`${e.target.value}-${selectedMonth.split('-')[1]}`);
-  };
-  
-  const handleMonthSelect = (e) => {
-    setDateQuery('');
-    setSelectedMonth(
-      `${selectedMonth.split('-')[0]}-${String(e.target.value).padStart(
-        2,
-        '0'
-      )}`
-    );
-  };
+  setDateQuery('');
+  setSelectedMonth(`${e.target.value}-${selectedMonth.split('-')[1]}`);
+};
 
-  const toggleManagerMode = () => {
-    if (isManager) {
-      setIsManager(false);
-      showToast('관리자 모드가 해제되었습니다.');
-    } else {
-      setPwdInput('');
-      setShowPwdModal(true);
-    }
-  };
-
-  const handlePwdSubmit = (e) => {
-    e.preventDefault();
-    if (pwdInput === 'jjong0311') {
-      setIsManager(true);
-      setShowPwdModal(false);
-      showToast('관리자 모드로 전환되었습니다.');
-    } else {
-      showToast('비밀번호가 일치하지 않습니다.', 'error');
-    }
-  };
+const handleMonthSelect = (e) => {
+  setDateQuery('');
+  setSelectedMonth(
+    `${selectedMonth.split('-')[0]}-${String(e.target.value).padStart(
+      2,
+      '0'
+    )}`
+  );
+};
 
   const mainMenus = [
     {
@@ -781,11 +1140,11 @@ if (workType === 'pre') {
       active: true,
     },
     {
-      id: 'coming-1',
-      title: '추가 예정',
-      description: '준비 중인 기능입니다',
-      icon: Calendar,
-      active: false,
+      id: 'staff',
+      title: '직원 정보 관리',
+      description: '직원 등록 및 PIN 관리',
+      icon: User,
+      active: true,
     },
     {
       id: 'coming-2',
@@ -814,6 +1173,21 @@ const getStartHourOptionsForLog = (log) =>
 
 const getEndHourOptionsForLog = (log) =>
   log.workDayType === 'weekend' ? weekendHourOptions : endHourOptions;
+
+  const filteredStaffList = useMemo(() => {
+    return staffList.filter((staff) => {
+      const matchDepartment =
+        !staffFilters.department || staff.department === staffFilters.department;
+  
+      const matchPosition =
+        !staffFilters.position || staff.position === staffFilters.position;
+  
+      const matchStatus =
+        !staffFilters.status || staff.status === staffFilters.status;
+  
+      return matchDepartment && matchPosition && matchStatus;
+    });
+  }, [staffList, staffFilters]);
 
   const exportToExcel = () => {
     if (displayedLogs.length === 0) {
@@ -897,25 +1271,83 @@ const getEndHourOptionsForLog = (log) =>
       );
     });
   
+    if (currentStaff && !isManagerUser) {
+      filtered = filtered.filter((log) => {
+        const logUserId = String(log.userId || '').trim();
+        const staffId = String(currentStaff?.id || '').trim();
+  
+        const logUserName = String(log.userName || '').trim();
+        const staffName = String(currentStaff?.name || '').trim();
+  
+        return logUserId === staffId || logUserName === staffName;
+      });
+    }
+  
     if (searchQuery.trim() !== '') {
       filtered = filtered.filter((log) =>
-        log.userName.includes(searchQuery.trim())
+        String(log.userName || '').includes(searchQuery.trim())
       );
     }
   
     if (dateQuery) {
       filtered = filtered.filter((log) => formatDate(log.date) === dateQuery);
     }
-
+  
     return filtered;
-  }, [logs, searchQuery, dateQuery, selectedMonth, workType]);
+  }, [
+    logs,
+    searchQuery,
+    dateQuery,
+    selectedMonth,
+    workType,
+    isManagerUser,
+    currentStaff,
+  ]);
 
   const displayedTotalHours = useMemo(() => {
-    return displayedLogs
-      .filter((log) => log.status === '승인')
-      .reduce((sum, log) => sum + Number(log.duration), 0)
+    let filtered = logs.filter((log) => {
+      const logType = log.type || 'post';
+  
+      return (
+        formatDate(log.date).startsWith(selectedMonth) &&
+        logType === 'post' &&
+        log.status === '승인'
+      );
+    });
+  
+    if (currentStaff && !isManagerUser) {
+      filtered = filtered.filter((log) => {
+        const logUserId = String(log.userId || '').trim();
+        const staffId = String(currentStaff?.id || '').trim();
+  
+        const logUserName = String(log.userName || '').trim();
+        const staffName = String(currentStaff?.name || '').trim();
+  
+        return logUserId === staffId || logUserName === staffName;
+      });
+    }
+  
+    if (searchQuery.trim() !== '') {
+      filtered = filtered.filter((log) =>
+        String(log.userName || '').includes(searchQuery.trim())
+      );
+    }
+  
+    if (dateQuery) {
+      filtered = filtered.filter((log) => formatDate(log.date) === dateQuery);
+    }
+  
+    return filtered
+      .reduce((sum, log) => sum + Number(log.duration || 0), 0)
       .toFixed(1);
-  }, [displayedLogs]);
+  }, [
+    logs,
+    searchQuery,
+    dateQuery,
+    selectedMonth,
+    isManagerUser,
+    currentStaff,
+  ]);
 
   const [displayYear, displayMonth] = selectedMonth.split('-');
   const displayMonthNum = parseInt(displayMonth, 10);
@@ -946,6 +1378,74 @@ const getEndHourOptionsForLog = (log) =>
             </div>
           </section>
   
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-8">
+  {currentStaff ? (
+    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <p className="text-sm text-gray-500 font-medium">현재 로그인</p>
+        <p className="text-lg font-extrabold text-[#1E3A8A]">
+          {currentStaff.name} / {currentStaff.department} / {currentStaff.position}
+        </p>
+        <p className="text-sm text-gray-500">
+          권한: {currentStaff.role === 'manager' ? '관리자' : '일반 직원'}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleStaffLogout}
+        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold"
+      >
+        로그아웃
+      </button>
+    </div>
+  ) : (
+    <form
+      onSubmit={handleStaffLogin}
+      className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end"
+    >
+      <div>
+        <label className="block text-sm font-bold text-gray-700 mb-1.5">
+          성명
+        </label>
+        <input
+          type="text"
+          name="name"
+          value={loginForm.name}
+          onChange={handleLoginFormChange}
+          placeholder="성명을 입력하세요"
+          className="w-full h-[44px] px-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-bold text-gray-700 mb-1.5">
+          PIN 번호
+        </label>
+        <input
+          type="password"
+          name="pin"
+          value={loginForm.pin}
+          onChange={handleLoginFormChange}
+          placeholder="숫자 6자리"
+          maxLength={6}
+          inputMode="numeric"
+          className="w-full h-[44px] px-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+          required
+        />
+      </div>
+
+      <button
+        type="submit"
+        className="h-[44px] px-5 bg-[#1E3A8A] hover:bg-blue-900 text-white rounded-xl font-bold"
+      >
+        로그인
+      </button>
+    </form>
+  )}
+</section>
+
           <section className="grid grid-cols-2 gap-4 md:gap-6">
             {mainMenus.map((menu) => {
               const Icon = menu.icon;
@@ -955,12 +1455,35 @@ const getEndHourOptionsForLog = (log) =>
                   key={menu.id}
                   type="button"
                   onClick={() => {
-                    if (menu.active) {
+                    if (!menu.active) {
+                      showToast('준비 중인 기능입니다.', 'error');
+                      return;
+                    }
+                  
+                    if (menu.id === 'overtime') {
+                      if (!currentStaff) {
+                        showToast('로그인 후 이용할 수 있습니다.', 'error');
+                        return;
+                      }
+                    
+                      if (isManagerUser) {
+                        setSearchQuery('');
+                      } else {
+                        setSearchQuery(currentStaff.name || '');
+                      }
+                    
                       setCurrentPage('overtime');
                       setView('list');
                       setWorkType('pre');
-                    } else {
-                      showToast('준비 중인 기능입니다.', 'error');
+                    }
+                  
+                    if (menu.id === 'staff') {
+                      if (!currentStaff || !isManagerUser) {
+                        showToast('직원 정보 관리는 관리자만 접근할 수 있습니다.', 'error');
+                        return;
+                      }
+                    
+                      setCurrentPage('staff');
                     }
                   }}
                   className={`bg-white rounded-[1.5rem] border p-5 md:p-8 min-h-[170px] md:min-h-[220px] shadow-sm transition-all text-center flex flex-col items-center justify-center ${
@@ -1026,6 +1549,434 @@ const getEndHourOptionsForLog = (log) =>
     );
   }
 
+  if (currentPage === 'staff') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] text-gray-800 font-sans pb-20">
+        {isLoading && (
+          <div className="fixed inset-0 z-[100] bg-white bg-opacity-70 backdrop-blur-sm flex items-center justify-center">
+            <div className="animate-spin rounded-full h-14 w-14 border-4 border-[#1E3A8A] border-t-transparent"></div>
+          </div>
+        )}
+  
+        <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+          <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={() => setCurrentPage('home')}
+                className="p-2 rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200"
+                title="메인으로"
+              >
+                <ChevronLeft size={20} />
+              </button>
+  
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white shadow-sm overflow-hidden">
+                <img
+                  src={jyLogo}
+                  alt="절영종합사회복지관 로고"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+  
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 leading-tight">
+                  직원 정보 관리
+                </h1>
+                <p className="text-sm text-gray-500">
+                  직원 등록 및 PIN 관리
+                </p>
+              </div>
+            </div>
+          </div>
+        </header>
+  
+        <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+            <h2 className="text-lg font-extrabold text-[#1E3A8A] mb-4">
+              직원 등록
+            </h2>
+  
+            <form onSubmit={handleAddStaff} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+             <label className="block text-sm font-bold text-gray-700 mb-1.5">
+             성명
+             </label>
+             <input
+             type="text"
+             name="name"
+             value={staffForm.name}
+             onChange={handleStaffFormChange}
+             placeholder="예: 홍길동"
+             className="w-full h-[44px] px-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+             required
+             />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                  부서
+                </label>
+                <select
+                 name="department"
+                 value={staffForm.department}
+                 onChange={handleStaffFormChange}
+                 className="w-full h-[44px] px-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+                 required
+                 >
+                 <option value="">부서 선택</option>
+                 {departmentOptions.map((department) => (
+                  <option key={department} value={department}>
+                  {department}
+                 </option>
+                 ))}
+                 </select>
+              </div>
+  
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                  직책
+                </label>
+                <select
+                name="position"
+                value={staffForm.position}
+                onChange={handleStaffFormChange}
+                className="w-full h-[44px] px-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+                required
+                >
+                <option value="">직책 선택</option>
+                <option value="관장">관장</option>
+                <option value="부장">부장</option>
+                <option value="과장">과장</option>
+                <option value="팀장">팀장</option>
+                <option value="대리">대리</option>
+                <option value="사회복지사">사회복지사</option>
+             </select>
+              </div>
+  
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                  권한
+                </label>
+                <select
+                  name="role"
+                  value={staffForm.role}
+                  onChange={handleStaffFormChange}
+                  className="w-full h-[44px] px-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+                >
+                  <option value="staff">일반 직원</option>
+                  <option value="manager">관리자</option>
+                </select>
+              </div>
+  
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                  PIN 번호
+                </label>
+                <input
+                  type="password"
+                  name="pin"
+                  value={staffForm.pin}
+                  onChange={handleStaffFormChange}
+                  placeholder="숫자 6자리"
+                  maxLength={6}
+                  inputMode="numeric"
+                  className="w-full h-[44px] px-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  로그인용 PIN입니다. 숫자 6자리로 설정하세요.
+                </p>
+              </div>
+  
+              <div className="md:col-span-2 pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-[#1E3A8A] hover:bg-blue-900 text-white font-bold rounded-xl flex items-center justify-center space-x-2"
+                >
+                  <CheckCircle size={20} />
+                  <span>직원 등록하기</span>
+                </button>
+              </div>
+            </form>
+          </section>
+  
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-extrabold text-[#1E3A8A]">
+                직원 목록
+              </h2>
+  
+              <button
+                type="button"
+                onClick={fetchStaffList}
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-bold flex items-center gap-1"
+              >
+                <RefreshCw size={15} />
+                새로고침
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-2 mb-4">
+  <select
+    name="department"
+    value={staffFilters.department}
+    onChange={handleStaffFilterChange}
+    className="h-[40px] px-3 bg-gray-50 border border-gray-300 rounded-xl text-sm outline-none"
+  >
+    <option value="">전체 부서</option>
+    {departmentOptions.map((department) => (
+      <option key={department} value={department}>
+        {department}
+      </option>
+    ))}
+  </select>
+
+  <select
+    name="position"
+    value={staffFilters.position}
+    onChange={handleStaffFilterChange}
+    className="h-[40px] px-3 bg-gray-50 border border-gray-300 rounded-xl text-sm outline-none"
+  >
+    <option value="">전체 직급</option>
+    <option value="관장">관장</option>
+    <option value="부장">부장</option>
+    <option value="과장">과장</option>
+    <option value="팀장">팀장</option>
+    <option value="대리">대리</option>
+    <option value="사회복지사">사회복지사</option>
+  </select>
+
+  <select
+    name="status"
+    value={staffFilters.status}
+    onChange={handleStaffFilterChange}
+    className="h-[40px] px-3 bg-gray-50 border border-gray-300 rounded-xl text-sm outline-none"
+  >
+    <option value="">전체 상태</option>
+    {statusOptions.map((status) => (
+      <option key={status} value={status}>
+        {status}
+      </option>
+    ))}
+  </select>
+
+  <button
+    type="button"
+    onClick={resetStaffFilters}
+    className="h-[40px] px-4 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-sm font-bold"
+  >
+    필터 초기화
+  </button>
+</div>
+            <div className="overflow-x-auto border border-gray-200 rounded-xl">
+              <table className="w-full text-sm text-center min-w-[900px]">
+                <thead className="bg-[#E0E7FF] text-[#1E3A8A]">
+                <tr>
+                <th className="px-3 py-3 border-r border-[#A5B4FC]">순번</th>
+                <th className="px-3 py-3 border-r border-[#A5B4FC]">성명</th>
+                <th className="px-3 py-3 border-r border-[#A5B4FC]">부서</th>
+                <th className="px-3 py-3 border-r border-[#A5B4FC]">직책</th>
+                <th className="px-3 py-3 border-r border-[#A5B4FC]">상태</th>
+                <th className="px-3 py-3 border-r border-[#A5B4FC]">권한</th>
+                <th className="px-3 py-3 border-r border-[#A5B4FC]">PIN</th>
+                <th className="px-3 py-3">관리</th>
+                </tr>
+                </thead>
+  
+                <tbody>
+                {filteredStaffList.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="py-10 text-gray-500">
+                        등록된 직원 정보가 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+
+                    filteredStaffList.map((staff, index) => {
+  const isEditing = editingStaffId === staff.id;
+
+ return (
+  <tr key={staff.id} className="border-t border-gray-100">
+    <td className="px-3 py-3 border-r border-gray-100 text-gray-600">
+      {index + 1}
+    </td>
+
+    <td className="px-3 py-3 border-r border-gray-100 font-bold">
+      {isEditing ? (
+          <input
+            type="text"
+            name="name"
+            value={staffEditForm.name}
+            onChange={handleStaffEditFormChange}
+            className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
+          />
+        ) : (
+          staff.name
+        )}
+      </td>
+
+      <td className="px-3 py-3 border-r border-gray-100">
+        {isEditing ? (
+          <select
+          name="department"
+          value={staffEditForm.department}
+          onChange={handleStaffEditFormChange}
+          className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
+        >
+          <option value="">부서 선택</option>
+          {departmentOptions.map((department) => (
+            <option key={department} value={department}>
+              {department}
+            </option>
+          ))}
+        </select>
+        ) : (
+          staff.department
+        )}
+      </td>
+
+      <td className="px-3 py-3 border-r border-gray-100">
+        {isEditing ? (
+          <select
+            name="position"
+            value={staffEditForm.position}
+            onChange={handleStaffEditFormChange}
+            className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
+          >
+            <option value="">직책 선택</option>
+            <option value="관장">관장</option>
+            <option value="부장">부장</option>
+            <option value="과장">과장</option>
+            <option value="팀장">팀장</option>
+            <option value="대리">대리</option>
+            <option value="사회복지사">사회복지사</option>
+          </select>
+        ) : (
+          staff.position
+        )}
+      </td>
+
+      <td className="px-3 py-3 border-r border-gray-100">
+  {isEditing ? (
+    <select
+      name="status"
+      value={staffEditForm.status}
+      onChange={handleStaffEditFormChange}
+      className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
+    >
+      {statusOptions.map((status) => (
+        <option key={status} value={status}>
+          {status}
+        </option>
+      ))}
+    </select>
+  ) : (
+    <span
+      className={`px-2 py-1 rounded-full text-xs font-bold ${
+        staff.status === '재직'
+          ? 'bg-green-100 text-green-700'
+          : staff.status === '휴직'
+          ? 'bg-yellow-100 text-yellow-700'
+          : 'bg-gray-100 text-gray-500'
+      }`}
+    >
+      {staff.status || '재직'}
+    </span>
+  )}
+</td>
+
+      <td className="px-3 py-3 border-r border-gray-100">
+        {isEditing ? (
+          <select
+            name="role"
+            value={staffEditForm.role}
+            onChange={handleStaffEditFormChange}
+            className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
+          >
+            <option value="staff">일반 직원</option>
+            <option value="manager">관리자</option>
+          </select>
+        ) : (
+          staff.role
+        )}
+      </td>
+
+      <td className="px-3 py-3 border-r border-gray-100 text-gray-500">
+        {isEditing ? (
+          <input
+            type="password"
+            name="pin"
+            value={staffEditForm.pin}
+            onChange={handleStaffEditFormChange}
+            maxLength={6}
+            inputMode="numeric"
+            className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
+          />
+        ) : staff.pin ? (
+          '******'
+        ) : (
+          '-'
+        )}
+      </td>
+
+      <td className="px-3 py-3">
+        {isEditing ? (
+          <div className="flex items-center justify-center gap-1">
+            <button
+              type="button"
+              onClick={() => handleUpdateStaff(staff)}
+              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded"
+            >
+              저장
+            </button>
+            <button
+              type="button"
+              onClick={handleStaffEditCancel}
+              className="px-2 py-1 bg-gray-400 hover:bg-gray-500 text-white text-xs font-bold rounded"
+            >
+              취소
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-1">
+            <button
+              type="button"
+              onClick={() => handleStaffEditStart(staff)}
+              className="px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded"
+            >
+              수정
+            </button>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+})
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+  
+        {toast.show && (
+          <div
+            className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white transition-opacity duration-300 ${
+              toast.type === 'error' ? 'bg-red-500' : 'bg-green-600'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {toast.type === 'error' ? (
+                <XCircle size={20} />
+              ) : (
+                <CheckCircle size={20} />
+              )}
+              <span className="font-medium">{toast.message}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-gray-800 font-sans pb-20 md:pb-8 relative">
       {/* 로딩 오버레이 (통신 중일 때 표시) */}
@@ -1042,49 +1993,6 @@ const getEndHourOptionsForLog = (log) =>
             ⚠️ 현재 구글 스프레드시트가 연결되지 않았습니다. AI가 안내해 드린
             [구글 시트 연동 가이드]를 확인해주세요!
           </p>
-        </div>
-      )}
-
-      {showPwdModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl border border-gray-100">
-            <div className="flex items-center space-x-2 mb-4">
-              <div className="p-2 bg-blue-100 rounded-full text-[#1E3A8A]">
-                <Lock size={20} />
-              </div>
-              <h3 className="text-lg font-bold text-gray-800">결재권자 접속</h3>
-            </div>
-            <form onSubmit={handlePwdSubmit}>
-              <p className="text-sm text-gray-600 mb-4">
-                관리자 비밀번호를 입력해주세요.
-                <br />
-                (관리자 전용)
-              </p>
-              <input
-                type="password"
-                value={pwdInput}
-                onChange={(e) => setPwdInput(e.target.value)}
-                placeholder="비밀번호"
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] focus:outline-none mb-5"
-                autoFocus
-              />
-              <div className="flex space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowPwdModal(false)}
-                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-[#1E3A8A] hover:bg-blue-900 text-white rounded-xl font-bold"
-                >
-                  확인
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
 
@@ -1135,17 +2043,7 @@ const getEndHourOptionsForLog = (log) =>
     </p>
   </div>
 </div>
-          <button
-            onClick={toggleManagerMode}
-            title="결재권자 로그인"
-            className={`p-2 rounded-xl transition-all ${
-              isManager
-                ? 'bg-[#1E3A8A] text-white shadow-md'
-                : 'bg-gray-100 text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            <ShieldCheck size={20} />
-          </button>
+          
         </div>
       </header>
 
@@ -1268,8 +2166,8 @@ const getEndHourOptionsForLog = (log) =>
             </div>
 
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mt-4 gap-3">
-  <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 w-full md:w-auto">
-    <div className="relative flex-1 md:flex-none">
+  <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 w-full md:w-auto min-w-0">
+    <div className="relative w-full min-w-0">
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
         <Search size={16} className="text-gray-400" />
       </div>
@@ -1278,11 +2176,11 @@ const getEndHourOptionsForLog = (log) =>
         placeholder="성명 검색..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full md:w-48 pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm"
+        className="block w-full min-w-0 max-w-full h-[42px] pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm box-border"
       />
     </div>
 
-    <div className="relative flex-1 md:flex-none">
+    <div className="relative w-full min-w-0">
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
         <Calendar size={16} className="text-gray-400" />
       </div>
@@ -1290,7 +2188,8 @@ const getEndHourOptionsForLog = (log) =>
         type="date"
         value={dateQuery}
         onChange={handleDateSearchChange}
-        className="w-full md:w-44 pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm"
+        style={{ WebkitAppearance: 'none' }}
+        className="block w-full min-w-0 max-w-full h-[42px] pl-9 pr-3 py-2 bg-white border border-[#A5B4FC] rounded-lg text-sm focus:ring-2 focus:ring-[#1E3A8A] outline-none shadow-sm box-border appearance-none"
       />
     </div>
 
@@ -1491,8 +2390,8 @@ const getEndHourOptionsForLog = (log) =>
                           {log.duration}
                         </td>
                         <td className="px-4 py-2.5 bg-[#EEF2FF] text-gray-500 relative">
-                          {isManager ? (
-                            <div className="flex items-center justify-center space-x-1.5">
+                        {isManagerUser ? (
+                          <div className="flex items-center justify-center space-x-1.5">
                               {log.status === '대기' ? (
                                 <>
                                   <button
@@ -1621,18 +2520,18 @@ const getEndHourOptionsForLog = (log) =>
                                 </>
                               )}
                           
-                              {log.userId === currentUserId &&
-                                log.status === '대기' && (
-                                  <button
-                                    onClick={() =>
-                                      handleDelete(log.id, log.userId, log.date)
-                                    }
-                                    className="text-gray-400 hover:text-red-500 p-1"
-                                    title="기록 삭제"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                )}
+                          {log.userId === currentStaff?.id &&
+                          log.status === '대기' && (
+                           <button
+                           onClick={() =>
+                           handleDelete(log.id, log.userId, log.date)
+                           }
+                           className="text-gray-400 hover:text-red-500 p-1"
+                           title="기록 삭제"
+                           >
+                           <Trash2 size={16} />
+                           </button>
+                           )}
                             </div>
                           )}
                         </td>
@@ -1720,12 +2619,11 @@ const getEndHourOptionsForLog = (log) =>
                       <User size={18} className="text-gray-400" />
                     </div>
                     <input
-                      type="text"
-                      value={userName}
-                      onChange={handleNameChange}
-                      placeholder="본인 성명"
-                      className="w-full h-[46px] pl-10 pr-4 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#1E3A8A] outline-none text-base"
-                      required
+                     type="text"
+                     value={currentStaff?.name || ''}
+                     placeholder="로그인한 직원명"
+                     readOnly
+                     className="w-full h-[46px] pl-10 pr-4 bg-gray-100 border border-gray-300 rounded-xl text-gray-600 outline-none text-base cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -1896,7 +2794,7 @@ const getEndHourOptionsForLog = (log) =>
               <div className="pt-4 border-t border-gray-100">
                 <button
                   type="submit"
-                  disabled={!userName || isLoading}
+                  disabled={!currentStaff || isLoading}
                   className="w-full py-3.5 bg-[#1E3A8A] hover:bg-blue-900 text-white font-bold rounded-xl disabled:bg-gray-300 flex items-center justify-center space-x-2"
                 >
                   <CheckCircle size={20} />
